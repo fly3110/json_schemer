@@ -79,6 +79,7 @@ module JSONSchemer
         return if schema.empty?
 
         type = schema['type']
+        nullable = schema['nullable']
         enum = schema['enum']
         all_of = schema['allOf']
         any_of = schema['anyOf']
@@ -130,6 +131,8 @@ module JSONSchemer
         elsif if_schema
           yield error(instance, 'else') if !else_schema.nil? && !valid_instance?(instance.merge(schema: else_schema))
         end
+
+        return if nullable and instance.data.nil?
 
         case type
         when nil
