@@ -14,40 +14,40 @@ module JSONSchemer
 
       Instance = Struct.new(:data, :data_pointer, :schema, :schema_pointer, :parent_uri) do
         def merge(
-          data: self.data,
-          data_pointer: self.data_pointer,
-          schema: self.schema,
-          schema_pointer: self.schema_pointer,
-          parent_uri: self.parent_uri
+            data: self.data,
+            data_pointer: self.data_pointer,
+            schema: self.schema,
+            schema_pointer: self.schema_pointer,
+            parent_uri: self.parent_uri
         )
           self.class.new(data, data_pointer, schema, schema_pointer, parent_uri)
         end
       end
 
-      ID_KEYWORD = '$id'
-      DEFAULT_REF_RESOLVER = proc { |uri| raise UnknownRef, uri.to_s }.freeze
+      ID_KEYWORD            = '$id'
+      DEFAULT_REF_RESOLVER  = proc { |uri| raise UnknownRef, uri.to_s }.freeze
       NET_HTTP_REF_RESOLVER = proc { |uri| JSON.parse(Net::HTTP.get(uri)) }.freeze
-      BOOLEANS = Set[true, false].freeze
+      BOOLEANS              = Set[true, false].freeze
 
       RUBY_REGEX_ANCHORS_TO_ECMA_262 = {
-        :bos => 'A',
-        :eos => 'z',
-        :bol => '\A',
-        :eol => '\z'
+          :bos => 'A',
+          :eos => 'z',
+          :bol => '\A',
+          :eol => '\z'
       }.freeze
 
       def initialize(
-        schema,
-        format: true,
-        formats: nil,
-        keywords: nil,
-        ref_resolver: DEFAULT_REF_RESOLVER
+          schema,
+          format: true,
+          formats: nil,
+          keywords: nil,
+          ref_resolver: DEFAULT_REF_RESOLVER
       )
         raise InvalidSymbolKey, 'schemas must use string keys' if schema.is_a?(Hash) && schema.first.first.is_a?(Symbol)
-        @root = schema
-        @format = format
-        @formats = formats
-        @keywords = keywords
+        @root         = schema
+        @format       = format
+        @formats      = formats
+        @keywords     = keywords
         @ref_resolver = ref_resolver == 'net/http' ? CachedRefResolver.new(&NET_HTTP_REF_RESOLVER) : ref_resolver
       end
 
@@ -59,7 +59,7 @@ module JSONSchemer
         validate_instance(Instance.new(data, '', root, '', nil))
       end
 
-    protected
+      protected
 
       def valid_instance?(instance)
         validate_instance(instance).none?
@@ -78,19 +78,19 @@ module JSONSchemer
 
         return if schema.empty?
 
-        type = schema['type']
-        nullable = schema['nullable']
-        enum = schema['enum']
-        all_of = schema['allOf']
-        any_of = schema['anyOf']
-        one_of = schema['oneOf']
-        not_schema = schema['not']
-        if_schema = schema['if']
+        type        = schema['type']
+        nullable    = schema['nullable']
+        enum        = schema['enum']
+        all_of      = schema['allOf']
+        any_of      = schema['anyOf']
+        one_of      = schema['oneOf']
+        not_schema  = schema['not']
+        if_schema   = schema['if']
         then_schema = schema['then']
         else_schema = schema['else']
-        format = schema['format']
-        ref = schema['$ref']
-        id = schema[id_keyword]
+        format      = schema['format']
+        ref         = schema['$ref']
+        id          = schema[id_keyword]
 
         instance.parent_uri = join_uri(instance.parent_uri, id)
 
@@ -121,7 +121,14 @@ module JSONSchemer
         yield error(instance, 'enum') if enum && !enum.include?(data)
         yield error(instance, 'const') if schema.key?('const') && schema['const'] != data
 
-        yield error(instance, 'allOf') if all_of && !all_of.all? { |subschema| valid_instance?(instance.merge(schema: subschema)) }
+        if all_of
+          all_of.all? do |subschema|
+            validate_instance(instance.merge(schema: subschema)).each do |error|
+              yield(error)
+            end
+          end
+        end
+
         yield error(instance, 'anyOf') if any_of && !any_of.any? { |subschema| valid_instance?(instance.merge(schema: subschema)) }
         yield error(instance, 'oneOf') if one_of && !one_of.one? { |subschema| valid_instance?(instance.merge(schema: subschema)) }
         yield error(instance, 'not') if !not_schema.nil? && valid_instance?(instance.merge(schema: not_schema))
@@ -135,16 +142,16 @@ module JSONSchemer
         return if nullable and instance.data.nil?
 
         case type
-        when nil
-          validate_class(instance, &Proc.new)
-        when String
-          validate_type(instance, type, &Proc.new)
-        when Array
-          if valid_type = type.find { |subtype| valid_instance?(instance.merge(schema: { 'type' => subtype })) }
-            validate_type(instance, valid_type, &Proc.new)
-          else
-            yield error(instance, 'type')
-          end
+          when nil
+            validate_class(instance, &Proc.new)
+          when String
+            validate_type(instance, type, &Proc.new)
+          when Array
+            if valid_type = type.find { |subtype| valid_instance?(instance.merge(schema: {'type' => subtype})) }
+              validate_type(instance, valid_type, &Proc.new)
+            else
+              yield error(instance, 'type')
+            end
         end
       end
 
@@ -152,7 +159,7 @@ module JSONSchemer
         @ids ||= resolve_ids(root)
       end
 
-    private
+      private
 
       attr_reader :root, :formats, :keywords, :ref_resolver
 
@@ -174,56 +181,57 @@ module JSONSchemer
 
       def child(schema)
         JSONSchemer.schema(
-          schema,
-          format: format?,
-          formats: formats,
-          keywords: keywords,
-          ref_resolver: ref_resolver
+            schema,
+            format:       format?,
+            formats:      formats,
+            keywords:     keywords,
+            ref_resolver: ref_resolver
         )
       end
 
-      def error(instance, type)
+      def error(instance, type, subschemas = nil)
         {
-          'data' => instance.data,
-          'data_pointer' => instance.data_pointer,
-          'schema' => instance.schema,
-          'schema_pointer' => instance.schema_pointer,
-          'root_schema' => root,
-          'type' => type,
+            'data'           => instance.data,
+            'data_pointer'   => instance.data_pointer,
+            'schema'         => instance.schema,
+            'schema_pointer' => instance.schema_pointer,
+            'root_schema'    => root,
+            'type'           => type,
+            'subschemas'     => subschemas,
         }
       end
 
       def validate_class(instance)
         case instance.data
-        when Integer
-          validate_integer(instance, &Proc.new)
-        when Numeric
-          validate_number(instance, &Proc.new)
-        when String
-          validate_string(instance, &Proc.new)
-        when Array
-          validate_array(instance, &Proc.new)
-        when Hash
-          validate_object(instance, &Proc.new)
+          when Integer
+            validate_integer(instance, &Proc.new)
+          when Numeric
+            validate_number(instance, &Proc.new)
+          when String
+            validate_string(instance, &Proc.new)
+          when Array
+            validate_array(instance, &Proc.new)
+          when Hash
+            validate_object(instance, &Proc.new)
         end
       end
 
       def validate_type(instance, type)
         case type
-        when 'null'
-          yield error(instance, 'null') unless instance.data.nil?
-        when 'boolean'
-          yield error(instance, 'boolean') unless BOOLEANS.include?(instance.data)
-        when 'number'
-          validate_number(instance, &Proc.new)
-        when 'integer'
-          validate_integer(instance, &Proc.new)
-        when 'string'
-          validate_string(instance, &Proc.new)
-        when 'array'
-          validate_array(instance, &Proc.new)
-        when 'object'
-          validate_object(instance, &Proc.new)
+          when 'null'
+            yield error(instance, 'null') unless instance.data.nil?
+          when 'boolean'
+            yield error(instance, 'boolean') unless BOOLEANS.include?(instance.data)
+          when 'number'
+            validate_number(instance, &Proc.new)
+          when 'integer'
+            validate_integer(instance, &Proc.new)
+          when 'string'
+            validate_string(instance, &Proc.new)
+          when 'array'
+            validate_array(instance, &Proc.new)
+          when 'object'
+            validate_object(instance, &Proc.new)
         end
       end
 
@@ -234,36 +242,36 @@ module JSONSchemer
           ref_pointer = Hana::Pointer.new(URI.decode_www_form_component(ref_uri.fragment))
           if ref.start_with?('#')
             subinstance = instance.merge(
-              schema: ref_pointer.eval(root),
-              schema_pointer: ref_uri.fragment,
-              parent_uri: pointer_uri(root, ref_pointer)
+                schema:         ref_pointer.eval(root),
+                schema_pointer: ref_uri.fragment,
+                parent_uri:     pointer_uri(root, ref_pointer)
             )
             validate_instance(subinstance, &Proc.new)
           else
-            ref_root = ref_resolver.call(ref_uri)
-            ref_object = child(ref_root)
+            ref_root    = ref_resolver.call(ref_uri)
+            ref_object  = child(ref_root)
             subinstance = instance.merge(
-              schema: ref_pointer.eval(ref_root),
-              schema_pointer: ref_uri.fragment,
-              parent_uri: pointer_uri(ref_root, ref_pointer)
+                schema:         ref_pointer.eval(ref_root),
+                schema_pointer: ref_uri.fragment,
+                parent_uri:     pointer_uri(ref_root, ref_pointer)
             )
             ref_object.validate_instance(subinstance, &Proc.new)
           end
         elsif id = ids[ref_uri.to_s]
           subinstance = instance.merge(
-            schema: id.fetch(:schema),
-            schema_pointer: id.fetch(:pointer),
-            parent_uri: ref_uri
+              schema:         id.fetch(:schema),
+              schema_pointer: id.fetch(:pointer),
+              parent_uri:     ref_uri
           )
           validate_instance(subinstance, &Proc.new)
         else
-          ref_root = ref_resolver.call(ref_uri)
-          ref_object = child(ref_root)
-          id = ref_object.ids[ref_uri.to_s] || { schema: ref_root, pointer: '' }
+          ref_root    = ref_resolver.call(ref_uri)
+          ref_object  = child(ref_root)
+          id          = ref_object.ids[ref_uri.to_s] || {schema: ref_root, pointer: ''}
           subinstance = instance.merge(
-            schema: id.fetch(:schema),
-            schema_pointer: id.fetch(:pointer),
-            parent_uri: ref_uri
+              schema:         id.fetch(:schema),
+              schema_pointer: id.fetch(:pointer),
+              parent_uri:     ref_uri
           )
           ref_object.validate_instance(subinstance, &Proc.new)
         end
@@ -283,12 +291,12 @@ module JSONSchemer
 
       def validate_numeric(instance)
         schema = instance.schema
-        data = instance.data
+        data   = instance.data
 
-        multiple_of = schema['multipleOf']
-        maximum = schema['maximum']
+        multiple_of       = schema['multipleOf']
+        maximum           = schema['maximum']
         exclusive_maximum = schema['exclusiveMaximum']
-        minimum = schema['minimum']
+        minimum           = schema['minimum']
         exclusive_minimum = schema['exclusiveMinimum']
 
         yield error(instance, 'maximum') if maximum && data > maximum
@@ -333,11 +341,11 @@ module JSONSchemer
 
         schema = instance.schema
 
-        max_length = schema['maxLength']
-        min_length = schema['minLength']
-        pattern = schema['pattern']
-        format = schema['format']
-        content_encoding = schema['contentEncoding']
+        max_length         = schema['maxLength']
+        min_length         = schema['minLength']
+        pattern            = schema['pattern']
+        format             = schema['format']
+        content_encoding   = schema['contentEncoding']
         content_media_type = schema['contentMediaType']
 
         yield error(instance, 'maxLength') if max_length && data.size > max_length
@@ -350,20 +358,20 @@ module JSONSchemer
 
           if content_encoding
             decoded_data = case content_encoding.downcase
-            when 'base64'
-              safe_strict_decode64(data)
-            else # '7bit', '8bit', 'binary', 'quoted-printable'
-              raise NotImplementedError
-            end
+                             when 'base64'
+                               safe_strict_decode64(data)
+                             else # '7bit', '8bit', 'binary', 'quoted-printable'
+                               raise NotImplementedError
+                           end
             yield error(instance, 'contentEncoding') unless decoded_data
           end
 
           if content_media_type && decoded_data
             case content_media_type.downcase
-            when 'application/json'
-              yield error(instance, 'contentMediaType') unless valid_json?(decoded_data)
-            else
-              raise NotImplementedError
+              when 'application/json'
+                yield error(instance, 'contentMediaType') unless valid_json?(decoded_data)
+              else
+                raise NotImplementedError
             end
           end
         end
@@ -379,12 +387,12 @@ module JSONSchemer
 
         schema = instance.schema
 
-        items = schema['items']
+        items            = schema['items']
         additional_items = schema['additionalItems']
-        max_items = schema['maxItems']
-        min_items = schema['minItems']
-        unique_items = schema['uniqueItems']
-        contains = schema['contains']
+        max_items        = schema['maxItems']
+        min_items        = schema['minItems']
+        unique_items     = schema['uniqueItems']
+        contains         = schema['contains']
 
         yield error(instance, 'maxItems') if max_items && data.size > max_items
         yield error(instance, 'minItems') if min_items && data.size < min_items
@@ -395,18 +403,18 @@ module JSONSchemer
           data.each_with_index do |item, index|
             if index < items.size
               subinstance = instance.merge(
-                data: item,
-                data_pointer: "#{instance.data_pointer}/#{index}",
-                schema: items[index],
-                schema_pointer: "#{instance.schema_pointer}/items/#{index}"
+                  data:           item,
+                  data_pointer:   "#{instance.data_pointer}/#{index}",
+                  schema:         items[index],
+                  schema_pointer: "#{instance.schema_pointer}/items/#{index}"
               )
               validate_instance(subinstance, &block)
             elsif !additional_items.nil?
               subinstance = instance.merge(
-                data: item,
-                data_pointer: "#{instance.data_pointer}/#{index}",
-                schema: additional_items,
-                schema_pointer: "#{instance.schema_pointer}/additionalItems"
+                  data:           item,
+                  data_pointer:   "#{instance.data_pointer}/#{index}",
+                  schema:         additional_items,
+                  schema_pointer: "#{instance.schema_pointer}/additionalItems"
               )
               validate_instance(subinstance, &block)
             else
@@ -416,10 +424,10 @@ module JSONSchemer
         elsif !items.nil?
           data.each_with_index do |item, index|
             subinstance = instance.merge(
-              data: item,
-              data_pointer: "#{instance.data_pointer}/#{index}",
-              schema: items,
-              schema_pointer: "#{instance.schema_pointer}/items"
+                data:           item,
+                data_pointer:   "#{instance.data_pointer}/#{index}",
+                schema:         items,
+                schema_pointer: "#{instance.schema_pointer}/items"
             )
             validate_instance(subinstance, &block)
           end
@@ -436,19 +444,19 @@ module JSONSchemer
 
         schema = instance.schema
 
-        max_properties = schema['maxProperties']
-        min_properties = schema['minProperties']
-        required = schema['required']
-        properties = schema['properties']
-        pattern_properties = schema['patternProperties']
+        max_properties        = schema['maxProperties']
+        min_properties        = schema['minProperties']
+        required              = schema['required']
+        properties            = schema['properties']
+        pattern_properties    = schema['patternProperties']
         additional_properties = schema['additionalProperties']
-        dependencies = schema['dependencies']
-        property_names = schema['propertyNames']
+        dependencies          = schema['dependencies']
+        property_names        = schema['propertyNames']
 
         if dependencies
           dependencies.each do |key, value|
             next unless data.key?(key)
-            subschema = value.is_a?(Array) ? { 'required' => value } : value
+            subschema   = value.is_a?(Array) ? {'required' => value} : value
             subinstance = instance.merge(schema: subschema, schema_pointer: "#{instance.schema_pointer}/dependencies/#{key}")
             validate_instance(subinstance, &block)
           end
@@ -456,15 +464,28 @@ module JSONSchemer
 
         yield error(instance, 'maxProperties') if max_properties && data.size > max_properties
         yield error(instance, 'minProperties') if min_properties && data.size < min_properties
-        yield error(instance, 'required') if required && required.any? { |key| !data.key?(key) }
+        if required
+          required.each do |key|
+            unless data.key?(key)
+              yield error(instance.merge(
+                  data:           key,
+                  data_pointer:   "#{instance.data_pointer}/#{key}",
+                  schema:         property_names,
+                  schema_pointer: "#{instance.schema_pointer}/properties/#{key}"
+              ), 'required')
+            end
+          end
+
+          # yield error(instance, 'required')
+        end
 
         regex_pattern_properties = nil
         data.each do |key, value|
           unless property_names.nil?
             subinstance = instance.merge(
-              data: key,
-              schema: property_names,
-              schema_pointer: "#{instance.schema_pointer}/propertyNames"
+                data:           key,
+                schema:         property_names,
+                schema_pointer: "#{instance.schema_pointer}/propertyNames"
             )
             validate_instance(subinstance, &block)
           end
@@ -473,10 +494,10 @@ module JSONSchemer
 
           if properties && properties.key?(key)
             subinstance = instance.merge(
-              data: value,
-              data_pointer: "#{instance.data_pointer}/#{key}",
-              schema: properties[key],
-              schema_pointer: "#{instance.schema_pointer}/properties/#{key}"
+                data:           value,
+                data_pointer:   "#{instance.data_pointer}/#{key}",
+                schema:         properties[key],
+                schema_pointer: "#{instance.schema_pointer}/properties/#{key}"
             )
             validate_instance(subinstance, &block)
             matched_key = true
@@ -489,10 +510,10 @@ module JSONSchemer
             regex_pattern_properties.each do |pattern, regex, property_schema|
               if regex =~ key
                 subinstance = instance.merge(
-                  data: value,
-                  data_pointer: "#{instance.data_pointer}/#{key}",
-                  schema: property_schema,
-                  schema_pointer: "#{instance.schema_pointer}/patternProperties/#{pattern}"
+                    data:           value,
+                    data_pointer:   "#{instance.data_pointer}/#{key}",
+                    schema:         property_schema,
+                    schema_pointer: "#{instance.schema_pointer}/patternProperties/#{pattern}"
                 )
                 validate_instance(subinstance, &block)
                 matched_key = true
@@ -504,10 +525,10 @@ module JSONSchemer
 
           unless additional_properties.nil?
             subinstance = instance.merge(
-              data: value,
-              data_pointer: "#{instance.data_pointer}/#{key}",
-              schema: additional_properties,
-              schema_pointer: "#{instance.schema_pointer}/additionalProperties"
+                data:           value,
+                data_pointer:   "#{instance.data_pointer}/#{key}",
+                schema:         additional_properties,
+                schema_pointer: "#{instance.schema_pointer}/additionalProperties"
             )
             validate_instance(subinstance, &block)
           end
@@ -524,11 +545,11 @@ module JSONSchemer
       end
 
       def ecma_262_regex(pattern)
-        @ecma_262_regex ||= {}
+        @ecma_262_regex          ||= {}
         @ecma_262_regex[pattern] ||= Regexp.new(
-          Regexp::Scanner.scan(pattern).map do |type, token, text|
-            type == :anchor ? RUBY_REGEX_ANCHORS_TO_ECMA_262.fetch(token, text) : text
-          end.join
+            Regexp::Scanner.scan(pattern).map do |type, token, text|
+              type == :anchor ? RUBY_REGEX_ANCHORS_TO_ECMA_262.fetch(token, text) : text
+            end.join
         )
       end
 
@@ -559,12 +580,12 @@ module JSONSchemer
         if schema.is_a?(Array)
           schema.each_with_index { |subschema, index| resolve_ids(subschema, ids, parent_uri, "#{pointer}/#{index}") }
         elsif schema.is_a?(Hash)
-          id = schema[id_keyword]
+          id  = schema[id_keyword]
           uri = join_uri(parent_uri, id)
           unless uri == parent_uri
             ids[uri.to_s] = {
-              schema: schema,
-              pointer: pointer
+                schema:  schema,
+                pointer: pointer
             }
           end
           if definitions = schema['definitions']
